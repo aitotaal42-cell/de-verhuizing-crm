@@ -32,15 +32,21 @@ class DeVerhuizingForms {
     }
 
     public function handle_cors() {
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+        if (strpos($request_uri, '/wp-json/deverhuizing/') === false) {
+            return;
+        }
+
         $allowed = get_option('deverhuizing_allowed_origins', 'https://deverhuizing.nl,https://www.deverhuizing.nl');
         $origins = array_map('trim', explode(',', $allowed));
         $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
 
+        header("Vary: Origin");
+
         if (in_array($origin, $origins)) {
             header("Access-Control-Allow-Origin: $origin");
-            header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+            header("Access-Control-Allow-Methods: POST, OPTIONS");
             header("Access-Control-Allow-Headers: Content-Type");
-            header("Access-Control-Allow-Credentials: true");
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -138,10 +144,15 @@ class DeVerhuizingForms {
             }
         }
 
-        $wpdb->insert("{$wpdb->prefix}dv_quote_requests", [
+        $email = sanitize_email($data['email']);
+        if (!is_email($email)) {
+            return new WP_Error('invalid_email', 'Ongeldig e-mailadres.', ['status' => 400]);
+        }
+
+        $clean = [
             'first_name' => sanitize_text_field($data['firstName']),
             'last_name' => sanitize_text_field($data['lastName'] ?? ''),
-            'email' => sanitize_email($data['email']),
+            'email' => $email,
             'phone' => sanitize_text_field($data['phone']),
             'move_from_address' => sanitize_text_field($data['moveFromAddress'] ?? ''),
             'move_from_postcode' => sanitize_text_field($data['moveFromPostcode'] ?? ''),
@@ -152,9 +163,14 @@ class DeVerhuizingForms {
             'move_type' => sanitize_text_field($data['moveType'] ?? ''),
             'move_date' => sanitize_text_field($data['moveDate'] ?? ''),
             'additional_notes' => sanitize_textarea_field($data['additionalNotes'] ?? ''),
-        ]);
+        ];
 
-        $this->send_notification('Nieuwe Offerte Aanvraag', $data);
+        $result = $wpdb->insert("{$wpdb->prefix}dv_quote_requests", $clean);
+        if ($result === false) {
+            return new WP_Error('db_error', 'Er ging iets mis bij het opslaan.', ['status' => 500]);
+        }
+
+        $this->send_notification('Nieuwe Offerte Aanvraag', $clean);
 
         return new WP_REST_Response(['success' => true, 'message' => 'Offerte aanvraag ontvangen.'], 200);
     }
@@ -170,16 +186,21 @@ class DeVerhuizingForms {
             }
         }
 
-        $wpdb->insert("{$wpdb->prefix}dv_callback_requests", [
+        $clean = [
             'first_name' => sanitize_text_field($data['firstName']),
             'last_name' => sanitize_text_field($data['lastName'] ?? ''),
             'phone' => sanitize_text_field($data['phone']),
             'email' => sanitize_email($data['email'] ?? ''),
             'preferred_time' => sanitize_text_field($data['preferredTime'] ?? ''),
             'notes' => sanitize_textarea_field($data['notes'] ?? ''),
-        ]);
+        ];
 
-        $this->send_notification('Nieuw Terugbelverzoek', $data);
+        $result = $wpdb->insert("{$wpdb->prefix}dv_callback_requests", $clean);
+        if ($result === false) {
+            return new WP_Error('db_error', 'Er ging iets mis bij het opslaan.', ['status' => 500]);
+        }
+
+        $this->send_notification('Nieuw Terugbelverzoek', $clean);
 
         return new WP_REST_Response(['success' => true, 'message' => 'Terugbelverzoek ontvangen.'], 200);
     }
@@ -195,15 +216,25 @@ class DeVerhuizingForms {
             }
         }
 
-        $wpdb->insert("{$wpdb->prefix}dv_contact_messages", [
+        $email = sanitize_email($data['email']);
+        if (!is_email($email)) {
+            return new WP_Error('invalid_email', 'Ongeldig e-mailadres.', ['status' => 400]);
+        }
+
+        $clean = [
             'name' => sanitize_text_field($data['name']),
-            'email' => sanitize_email($data['email']),
+            'email' => $email,
             'phone' => sanitize_text_field($data['phone'] ?? ''),
             'subject' => sanitize_text_field($data['subject'] ?? ''),
             'message' => sanitize_textarea_field($data['message']),
-        ]);
+        ];
 
-        $this->send_notification('Nieuw Contactbericht', $data);
+        $result = $wpdb->insert("{$wpdb->prefix}dv_contact_messages", $clean);
+        if ($result === false) {
+            return new WP_Error('db_error', 'Er ging iets mis bij het opslaan.', ['status' => 500]);
+        }
+
+        $this->send_notification('Nieuw Contactbericht', $clean);
 
         return new WP_REST_Response(['success' => true, 'message' => 'Bericht ontvangen.'], 200);
     }
@@ -212,13 +243,15 @@ class DeVerhuizingForms {
         $admin_email = get_option('deverhuizing_admin_email', get_option('admin_email'));
         $body = "Er is een nieuw formulier ingevuld op deverhuizing.nl:\n\n";
         foreach ($data as $key => $value) {
-            if (!empty($value)) {
+            if (!empty($value) && is_string($value)) {
                 $label = ucfirst(preg_replace('/([A-Z])/', ' $1', $key));
-                $body .= "$label: $value\n";
+                $safe_value = str_replace(["\r", "\n"], ' ', sanitize_text_field($value));
+                $body .= "$label: $safe_value\n";
             }
         }
         $body .= "\nBekijk alle inzendingen in je WordPress dashboard onder 'De Verhuizing'.";
-        wp_mail($admin_email, "[De Verhuizing] $subject", $body);
+        $safe_subject = str_replace(["\r", "\n"], '', "[De Verhuizing] $subject");
+        wp_mail($admin_email, $safe_subject, $body);
     }
 
     public function add_admin_menu() {
@@ -241,12 +274,16 @@ class DeVerhuizingForms {
     public function render_admin_page() {
         global $wpdb;
 
-        if (isset($_POST['dv_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'dv_update_status')) {
-            $wpdb->update("{$wpdb->prefix}dv_quote_requests",
-                ['status' => sanitize_text_field($_POST['status'])],
-                ['id' => intval($_POST['id'])]
-            );
-            echo '<div class="notice notice-success"><p>Status bijgewerkt.</p></div>';
+        if (isset($_POST['dv_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'dv_update_status') && current_user_can('manage_options')) {
+            $valid_statuses = ['nieuw', 'in_behandeling', 'offerte_verstuurd', 'afgerond', 'geannuleerd'];
+            $new_status = sanitize_text_field($_POST['status']);
+            if (in_array($new_status, $valid_statuses)) {
+                $wpdb->update("{$wpdb->prefix}dv_quote_requests",
+                    ['status' => $new_status],
+                    ['id' => intval($_POST['id'])]
+                );
+                echo '<div class="notice notice-success"><p>Status bijgewerkt.</p></div>';
+            }
         }
 
         $items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}dv_quote_requests ORDER BY created_at DESC");
@@ -307,12 +344,16 @@ class DeVerhuizingForms {
     public function render_callbacks_page() {
         global $wpdb;
 
-        if (isset($_POST['dv_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'dv_update_status')) {
-            $wpdb->update("{$wpdb->prefix}dv_callback_requests",
-                ['status' => sanitize_text_field($_POST['status'])],
-                ['id' => intval($_POST['id'])]
-            );
-            echo '<div class="notice notice-success"><p>Status bijgewerkt.</p></div>';
+        if (isset($_POST['dv_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'dv_update_status') && current_user_can('manage_options')) {
+            $valid_statuses = ['nieuw', 'in_behandeling', 'afgerond', 'geannuleerd'];
+            $new_status = sanitize_text_field($_POST['status']);
+            if (in_array($new_status, $valid_statuses)) {
+                $wpdb->update("{$wpdb->prefix}dv_callback_requests",
+                    ['status' => $new_status],
+                    ['id' => intval($_POST['id'])]
+                );
+                echo '<div class="notice notice-success"><p>Status bijgewerkt.</p></div>';
+            }
         }
 
         $items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}dv_callback_requests ORDER BY created_at DESC");
@@ -369,12 +410,16 @@ class DeVerhuizingForms {
     public function render_contact_page() {
         global $wpdb;
 
-        if (isset($_POST['dv_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'dv_update_status')) {
-            $wpdb->update("{$wpdb->prefix}dv_contact_messages",
-                ['status' => sanitize_text_field($_POST['status'])],
-                ['id' => intval($_POST['id'])]
-            );
-            echo '<div class="notice notice-success"><p>Status bijgewerkt.</p></div>';
+        if (isset($_POST['dv_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'dv_update_status') && current_user_can('manage_options')) {
+            $valid_statuses = ['nieuw', 'in_behandeling', 'afgerond', 'geannuleerd'];
+            $new_status = sanitize_text_field($_POST['status']);
+            if (in_array($new_status, $valid_statuses)) {
+                $wpdb->update("{$wpdb->prefix}dv_contact_messages",
+                    ['status' => $new_status],
+                    ['id' => intval($_POST['id'])]
+                );
+                echo '<div class="notice notice-success"><p>Status bijgewerkt.</p></div>';
+            }
         }
 
         $items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}dv_contact_messages ORDER BY created_at DESC");
