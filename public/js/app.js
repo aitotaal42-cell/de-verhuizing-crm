@@ -7,6 +7,12 @@ let allMessages = [];
 let selectedIds = new Set();
 let sortConfig = { key: null, dir: "asc" };
 let paginationConfig = { page: 1, perPage: 20 };
+let filterState = { search: "", status: "" };
+
+function esc(str) {
+  if (!str) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
 
 async function api(url, options = {}) {
   const res = await fetch(url, {
@@ -155,6 +161,7 @@ async function navigate(e, page) {
   selectedIds.clear();
   sortConfig = { key: null, dir: "asc" };
   paginationConfig.page = 1;
+  filterState = { search: "", status: "" };
   document.querySelectorAll(".sidebar nav a").forEach(a => {
     a.classList.toggle("active", a.dataset.page === page);
   });
@@ -277,8 +284,8 @@ async function renderStats(container) {
         ${recentQuotes.length === 0 ? '<p style="color:var(--gray-400);font-size:13px">Nog geen offertes</p>' : recentQuotes.map(q => `
           <div class="recent-item" style="cursor:pointer" onclick="navigate(null,'quotes');setTimeout(()=>openQuoteDetail('${q.id}'),300)">
             <div>
-              <div class="name">${q.firstName} ${q.lastName}</div>
-              <div class="meta">${q.moveFromCity} ${q.moveToCity ? '&rarr; ' + q.moveToCity : ''}</div>
+              <div class="name">${esc(q.firstName)} ${esc(q.lastName)}</div>
+              <div class="meta">${esc(q.moveFromCity)} ${q.moveToCity ? '&rarr; ' + q.moveToCity : ''}</div>
             </div>
             ${statusBadge(q.status)}
           </div>
@@ -289,8 +296,8 @@ async function renderStats(container) {
         ${recentCallbacks.length === 0 ? '<p style="color:var(--gray-400);font-size:13px">Nog geen terugbelverzoeken</p>' : recentCallbacks.map(c => `
           <div class="recent-item" style="cursor:pointer" onclick="navigate(null,'callbacks');setTimeout(()=>openCallbackDetail('${c.id}'),300)">
             <div>
-              <div class="name">${c.firstName} ${c.lastName}</div>
-              <div class="meta">${c.phone}</div>
+              <div class="name">${esc(c.firstName)} ${esc(c.lastName)}</div>
+              <div class="meta">${esc(c.phone)}</div>
             </div>
             ${statusBadge(c.status)}
           </div>
@@ -480,13 +487,9 @@ async function renderQuotes(container) {
 }
 
 function getFilteredQuotes() {
-  const searchEl = document.getElementById("quoteSearch");
-  const statusEl = document.getElementById("quoteStatusFilter");
-  const search = searchEl ? searchEl.value.toLowerCase() : "";
-  const status = statusEl ? statusEl.value : "";
   let filtered = allQuotes;
-  if (search) filtered = filtered.filter(q => `${q.firstName} ${q.lastName} ${q.email} ${q.phone} ${q.moveFromCity} ${q.moveToCity || ""}`.toLowerCase().includes(search));
-  if (status) filtered = filtered.filter(q => q.status === status);
+  if (filterState.search) filtered = filtered.filter(q => `${q.firstName} ${q.lastName} ${q.email} ${q.phone} ${q.moveFromCity} ${q.moveToCity || ""}`.toLowerCase().includes(filterState.search));
+  if (filterState.status) filtered = filtered.filter(q => q.status === filterState.status);
   return filtered;
 }
 
@@ -502,15 +505,15 @@ function renderQuoteTable(container, data) {
         <div class="toolbar">
           <div class="search-box">
             ${searchIcon()}
-            <input type="text" placeholder="Zoeken op naam, email, stad..." id="quoteSearch" oninput="filterQuotes()" value="${document.getElementById('quoteSearch')?.value || ''}">
+            <input type="text" placeholder="Zoeken op naam, email, stad..." id="quoteSearch" oninput="filterQuotes()" value="${esc(filterState.search)}">
           </div>
           <select id="quoteStatusFilter" onchange="filterQuotes()">
             <option value="">Alle statussen</option>
-            <option value="nieuw">Nieuw</option>
-            <option value="in_behandeling">In behandeling</option>
-            <option value="offerte_verstuurd">Offerte verstuurd</option>
-            <option value="afgerond">Afgerond</option>
-            <option value="geannuleerd">Geannuleerd</option>
+            <option value="nieuw" ${filterState.status==='nieuw'?'selected':''}>Nieuw</option>
+            <option value="in_behandeling" ${filterState.status==='in_behandeling'?'selected':''}>In behandeling</option>
+            <option value="offerte_verstuurd" ${filterState.status==='offerte_verstuurd'?'selected':''}>Offerte verstuurd</option>
+            <option value="afgerond" ${filterState.status==='afgerond'?'selected':''}>Afgerond</option>
+            <option value="geannuleerd" ${filterState.status==='geannuleerd'?'selected':''}>Geannuleerd</option>
           </select>
         </div>
       </div>
@@ -531,10 +534,10 @@ function renderQuoteTable(container, data) {
           ${pageData.map(q => `
             <tr class="${selectedIds.has(q.id) ? 'selected' : ''}" onclick="openQuoteDetail('${q.id}')">
               <td><input type="checkbox" ${selectedIds.has(q.id) ? 'checked' : ''} onclick="toggleSelect('${q.id}',event)"></td>
-              <td><strong>${q.firstName} ${q.lastName}</strong></td>
-              <td>${q.email}<br><small style="color:var(--gray-400)">${q.phone}</small></td>
-              <td>${q.moveFromCity}</td>
-              <td>${q.moveToCity || "-"}</td>
+              <td><strong>${esc(q.firstName)} ${esc(q.lastName)}</strong></td>
+              <td>${esc(q.email)}<br><small style="color:var(--gray-400)">${esc(q.phone)}</small></td>
+              <td>${esc(q.moveFromCity)}</td>
+              <td>${esc(q.moveToCity) || "-"}</td>
               <td>${formatDateShort(q.moveDate)}</td>
               <td>${statusBadge(q.status)}</td>
               <td><small style="color:var(--gray-500)">${formatDate(q.createdAt)}</small></td>
@@ -554,6 +557,8 @@ function renderQuoteTable(container, data) {
 
 function filterQuotes() {
   paginationConfig.page = 1;
+  filterState.search = (document.getElementById("quoteSearch")?.value || "").toLowerCase();
+  filterState.status = document.getElementById("quoteStatusFilter")?.value || "";
   const filtered = getFilteredQuotes();
   renderQuoteTable(document.getElementById("pageContent"), filtered);
 }
@@ -561,7 +566,7 @@ function filterQuotes() {
 async function openQuoteDetail(id) {
   const q = allQuotes.find(x => x.id === id);
   if (!q) return;
-  document.getElementById("detailTitle").textContent = `${q.firstName} ${q.lastName}`;
+  document.getElementById("detailTitle").textContent = `${esc(q.firstName)} ${esc(q.lastName)}`;
 
   const notesRes = await api(`/api/crm/notes/quote/${id}`);
   const notes = await notesRes.json();
@@ -588,8 +593,8 @@ async function openQuoteDetail(id) {
         Contactgegevens
       </div>
       <div class="detail-row">
-        <div class="detail-field"><div class="label">Email</div><div class="value"><a href="mailto:${q.email}">${q.email}</a></div></div>
-        <div class="detail-field"><div class="label">Telefoon</div><div class="value"><a href="tel:${q.phone}">${q.phone}</a></div></div>
+        <div class="detail-field"><div class="label">Email</div><div class="value"><a href="mailto:${esc(q.email)}">${esc(q.email)}</a></div></div>
+        <div class="detail-field"><div class="label">Telefoon</div><div class="value"><a href="tel:${esc(q.phone)}">${esc(q.phone)}</a></div></div>
       </div>
     </div>
     <div class="detail-section">
@@ -598,12 +603,12 @@ async function openQuoteDetail(id) {
         Verhuisgegevens
       </div>
       <div class="detail-row">
-        <div class="detail-field"><div class="label">Type verhuizing</div><div class="value">${q.moveType}</div></div>
+        <div class="detail-field"><div class="label">Type verhuizing</div><div class="value">${esc(q.moveType)}</div></div>
         <div class="detail-field"><div class="label">Verhuisdatum</div><div class="value">${formatDateShort(q.moveDate)}</div></div>
       </div>
-      <div class="detail-field"><div class="label">Van adres</div><div class="value">${q.moveFromAddress}, ${q.moveFromPostcode} ${q.moveFromCity}</div></div>
-      <div class="detail-field"><div class="label">Naar adres</div><div class="value">${q.moveToAddress ? `${q.moveToAddress}, ${q.moveToPostcode} ${q.moveToCity}` : "-"}</div></div>
-      ${q.additionalNotes ? `<div class="detail-field"><div class="label">Opmerkingen klant</div><div class="value" style="background:var(--gray-50);padding:10px;border-radius:var(--radius);border:1px solid var(--gray-100)">${q.additionalNotes}</div></div>` : ""}
+      <div class="detail-field"><div class="label">Van adres</div><div class="value">${esc(q.moveFromAddress)}, ${esc(q.moveFromPostcode)} ${esc(q.moveFromCity)}</div></div>
+      <div class="detail-field"><div class="label">Naar adres</div><div class="value">${q.moveToAddress ? `${esc(q.moveToAddress)}, ${esc(q.moveToPostcode)} ${esc(q.moveToCity)}` : "-"}</div></div>
+      ${q.additionalNotes ? `<div class="detail-field"><div class="label">Opmerkingen klant</div><div class="value" style="background:var(--gray-50);padding:10px;border-radius:var(--radius);border:1px solid var(--gray-100)">${esc(q.additionalNotes)}</div></div>` : ""}
     </div>
     <div class="detail-section">
       <div class="detail-field"><div class="label">Ontvangen op</div><div class="value">${formatDate(q.createdAt)}</div></div>
@@ -613,7 +618,7 @@ async function openQuoteDetail(id) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Notities (${notes.length})
       </div>
-      ${notes.map(n => `<div class="note"><div class="note-meta">${n.authorName} &middot; ${formatDate(n.createdAt)}</div><div class="note-content">${n.content}</div></div>`).join("")}
+      ${notes.map(n => `<div class="note"><div class="note-meta">${esc(n.authorName)} &middot; ${formatDate(n.createdAt)}</div><div class="note-content">${esc(n.content)}</div></div>`).join("")}
       <div class="note-form">
         <textarea id="noteInput" placeholder="Schrijf een notitie..."></textarea>
         <button class="btn btn-primary btn-sm" style="width:auto;align-self:flex-end" onclick="addNote('${id}','quote')">Notitie opslaan</button>
@@ -639,13 +644,9 @@ async function renderCallbacks(container) {
 }
 
 function getFilteredCallbacks() {
-  const searchEl = document.getElementById("cbSearch");
-  const statusEl = document.getElementById("cbStatusFilter");
-  const search = searchEl ? searchEl.value.toLowerCase() : "";
-  const status = statusEl ? statusEl.value : "";
   let filtered = allCallbacks;
-  if (search) filtered = filtered.filter(c => `${c.firstName} ${c.lastName} ${c.phone} ${c.email}`.toLowerCase().includes(search));
-  if (status) filtered = filtered.filter(c => c.status === status);
+  if (filterState.search) filtered = filtered.filter(c => `${c.firstName} ${c.lastName} ${c.phone} ${c.email}`.toLowerCase().includes(filterState.search));
+  if (filterState.status) filtered = filtered.filter(c => c.status === filterState.status);
   return filtered;
 }
 
@@ -661,14 +662,14 @@ function renderCallbackTable(container, data) {
         <div class="toolbar">
           <div class="search-box">
             ${searchIcon()}
-            <input type="text" placeholder="Zoeken op naam, telefoon..." id="cbSearch" oninput="filterCallbacks()" value="${document.getElementById('cbSearch')?.value || ''}">
+            <input type="text" placeholder="Zoeken op naam, telefoon..." id="cbSearch" oninput="filterCallbacks()" value="${esc(filterState.search)}">
           </div>
           <select id="cbStatusFilter" onchange="filterCallbacks()">
             <option value="">Alle statussen</option>
-            <option value="nieuw">Nieuw</option>
-            <option value="in_behandeling">In behandeling</option>
-            <option value="afgerond">Afgerond</option>
-            <option value="geannuleerd">Geannuleerd</option>
+            <option value="nieuw" ${filterState.status==='nieuw'?'selected':''}>Nieuw</option>
+            <option value="in_behandeling" ${filterState.status==='in_behandeling'?'selected':''}>In behandeling</option>
+            <option value="afgerond" ${filterState.status==='afgerond'?'selected':''}>Afgerond</option>
+            <option value="geannuleerd" ${filterState.status==='geannuleerd'?'selected':''}>Geannuleerd</option>
           </select>
         </div>
       </div>
@@ -688,10 +689,10 @@ function renderCallbackTable(container, data) {
           ${pageData.map(c => `
             <tr class="${selectedIds.has(c.id) ? 'selected' : ''}" onclick="openCallbackDetail('${c.id}')">
               <td><input type="checkbox" ${selectedIds.has(c.id) ? 'checked' : ''} onclick="toggleSelect('${c.id}',event)"></td>
-              <td><strong>${c.firstName} ${c.lastName}</strong></td>
-              <td>${c.phone}</td>
-              <td>${c.email}</td>
-              <td>${c.requestType}</td>
+              <td><strong>${esc(c.firstName)} ${esc(c.lastName)}</strong></td>
+              <td>${esc(c.phone)}</td>
+              <td>${esc(c.email)}</td>
+              <td>${esc(c.requestType)}</td>
               <td>${statusBadge(c.status)}</td>
               <td><small style="color:var(--gray-500)">${formatDate(c.createdAt)}</small></td>
             </tr>
@@ -705,6 +706,8 @@ function renderCallbackTable(container, data) {
 
 function filterCallbacks() {
   paginationConfig.page = 1;
+  filterState.search = (document.getElementById("cbSearch")?.value || "").toLowerCase();
+  filterState.status = document.getElementById("cbStatusFilter")?.value || "";
   const filtered = getFilteredCallbacks();
   renderCallbackTable(document.getElementById("pageContent"), filtered);
 }
@@ -712,7 +715,7 @@ function filterCallbacks() {
 async function openCallbackDetail(id) {
   const c = allCallbacks.find(x => x.id === id);
   if (!c) return;
-  document.getElementById("detailTitle").textContent = `${c.firstName} ${c.lastName}`;
+  document.getElementById("detailTitle").textContent = `${esc(c.firstName)} ${esc(c.lastName)}`;
 
   const notesRes = await api(`/api/crm/notes/callback/${id}`);
   const notes = await notesRes.json();
@@ -738,10 +741,10 @@ async function openCallbackDetail(id) {
         Contactgegevens
       </div>
       <div class="detail-row">
-        <div class="detail-field"><div class="label">Telefoon</div><div class="value"><a href="tel:${c.phone}">${c.phone}</a></div></div>
-        <div class="detail-field"><div class="label">Email</div><div class="value"><a href="mailto:${c.email}">${c.email}</a></div></div>
+        <div class="detail-field"><div class="label">Telefoon</div><div class="value"><a href="tel:${esc(c.phone)}">${esc(c.phone)}</a></div></div>
+        <div class="detail-field"><div class="label">Email</div><div class="value"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div></div>
       </div>
-      <div class="detail-field"><div class="label">Type verzoek</div><div class="value">${c.requestType}</div></div>
+      <div class="detail-field"><div class="label">Type verzoek</div><div class="value">${esc(c.requestType)}</div></div>
     </div>
     <div class="detail-section">
       <div class="detail-field"><div class="label">Ontvangen op</div><div class="value">${formatDate(c.createdAt)}</div></div>
@@ -751,7 +754,7 @@ async function openCallbackDetail(id) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Notities (${notes.length})
       </div>
-      ${notes.map(n => `<div class="note"><div class="note-meta">${n.authorName} &middot; ${formatDate(n.createdAt)}</div><div class="note-content">${n.content}</div></div>`).join("")}
+      ${notes.map(n => `<div class="note"><div class="note-meta">${esc(n.authorName)} &middot; ${formatDate(n.createdAt)}</div><div class="note-content">${esc(n.content)}</div></div>`).join("")}
       <div class="note-form">
         <textarea id="noteInput" placeholder="Schrijf een notitie..."></textarea>
         <button class="btn btn-primary btn-sm" style="width:auto;align-self:flex-end" onclick="addNote('${id}','callback')">Notitie opslaan</button>
@@ -777,10 +780,8 @@ async function renderMessages(container) {
 }
 
 function getFilteredMessages() {
-  const searchEl = document.getElementById("msgSearch");
-  const search = searchEl ? searchEl.value.toLowerCase() : "";
   let filtered = allMessages;
-  if (search) filtered = filtered.filter(m => `${m.name} ${m.email} ${m.subject}`.toLowerCase().includes(search));
+  if (filterState.search) filtered = filtered.filter(m => `${m.name} ${m.email} ${m.subject}`.toLowerCase().includes(filterState.search));
   return filtered;
 }
 
@@ -796,7 +797,7 @@ function renderMessageTable(container, data) {
         <div class="toolbar">
           <div class="search-box">
             ${searchIcon()}
-            <input type="text" placeholder="Zoeken op naam, email, onderwerp..." id="msgSearch" oninput="filterMessages()" value="${document.getElementById('msgSearch')?.value || ''}">
+            <input type="text" placeholder="Zoeken op naam, email, onderwerp..." id="msgSearch" oninput="filterMessages()" value="${esc(filterState.search)}">
           </div>
         </div>
       </div>
@@ -815,10 +816,10 @@ function renderMessageTable(container, data) {
           ${pageData.map(m => `
             <tr class="${selectedIds.has(m.id) ? 'selected' : ''}">
               <td><input type="checkbox" ${selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleSelect('${m.id}',event)"></td>
-              <td><strong>${m.name}</strong></td>
-              <td><a href="mailto:${m.email}">${m.email}</a></td>
-              <td>${m.subject}</td>
-              <td><small style="color:var(--gray-500)">${m.message.substring(0, 100)}${m.message.length > 100 ? "..." : ""}</small></td>
+              <td><strong>${esc(m.name)}</strong></td>
+              <td><a href="mailto:${esc(m.email)}">${esc(m.email)}</a></td>
+              <td>${esc(m.subject)}</td>
+              <td><small style="color:var(--gray-500)">${esc(m.message.substring(0, 100))}${m.message.length > 100 ? "..." : ""}</small></td>
               <td><small style="color:var(--gray-500)">${formatDate(m.createdAt)}</small></td>
             </tr>
           `).join("")}
@@ -831,6 +832,7 @@ function renderMessageTable(container, data) {
 
 function filterMessages() {
   paginationConfig.page = 1;
+  filterState.search = (document.getElementById("msgSearch")?.value || "").toLowerCase();
   const filtered = getFilteredMessages();
   renderMessageTable(document.getElementById("pageContent"), filtered);
 }
@@ -908,7 +910,7 @@ function exportData(type, format) {
       }
     });
     const xlsxContent = generateXLSX(headers, rows);
-    downloadFile(xlsxContent, `${filename}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    downloadFile(xlsxContent, `${filename}.xls`, "application/vnd.ms-excel");
     showToast(`${data.length} rijen geexporteerd als XLSX`);
   }
 }
