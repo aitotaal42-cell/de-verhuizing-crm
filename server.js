@@ -71,11 +71,11 @@ app.get("/api/auth/me", (req, res) => {
 app.post("/api/quote-requests", (req, res) => {
   try {
     const { firstName, lastName, email, phone, moveFromAddress, moveFromPostcode, moveFromCity, moveToAddress, moveToPostcode, moveToCity, moveType, moveDate, additionalNotes } = req.body;
-    if (!firstName || !lastName || !email || !phone || !moveFromAddress || !moveFromPostcode || !moveFromCity || !moveType || !moveDate) {
-      return res.status(400).json({ error: "Verplichte velden ontbreken" });
+    if (!firstName || !phone) {
+      return res.status(400).json({ error: "Naam en telefoonnummer zijn verplicht" });
     }
     const stmt = db.prepare(`INSERT INTO quote_requests (firstName, lastName, email, phone, moveFromAddress, moveFromPostcode, moveFromCity, moveToAddress, moveToPostcode, moveToCity, moveType, moveDate, additionalNotes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    stmt.run(firstName, lastName, email, phone, moveFromAddress, moveFromPostcode, moveFromCity, moveToAddress || null, moveToPostcode || null, moveToCity || null, moveType, moveDate, additionalNotes || null);
+    stmt.run(firstName, lastName || null, email || null, phone, moveFromAddress || null, moveFromPostcode || null, moveFromCity || null, moveToAddress || null, moveToPostcode || null, moveToCity || null, moveType || null, moveDate || null, additionalNotes || null);
     res.json({ success: true, message: "Offerte aanvraag ontvangen" });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -84,12 +84,12 @@ app.post("/api/quote-requests", (req, res) => {
 
 app.post("/api/callback-requests", (req, res) => {
   try {
-    const { firstName, lastName, phone, email, requestType } = req.body;
-    if (!firstName || !lastName || !phone || !email || !requestType) {
-      return res.status(400).json({ error: "Verplichte velden ontbreken" });
+    const { firstName, lastName, phone, email, requestType, preferredTime } = req.body;
+    if (!firstName || !phone) {
+      return res.status(400).json({ error: "Naam en telefoonnummer zijn verplicht" });
     }
     const stmt = db.prepare(`INSERT INTO callback_requests (firstName, lastName, phone, email, requestType) VALUES (?, ?, ?, ?, ?)`);
-    stmt.run(firstName, lastName, phone, email, requestType);
+    stmt.run(firstName, lastName || null, phone, email || null, preferredTime || requestType || null);
     res.json({ success: true, message: "Terugbelverzoek ontvangen" });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -162,6 +162,32 @@ app.patch("/api/crm/callback-requests/:id", isAuthenticated, (req, res) => {
 app.get("/api/crm/contact-messages", isAuthenticated, (req, res) => {
   const rows = db.prepare("SELECT * FROM contact_messages ORDER BY createdAt DESC").all();
   res.json(rows);
+});
+
+app.delete("/api/crm/quote-requests/bulk", isAuthenticated, (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "Geen IDs opgegeven" });
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(`DELETE FROM lead_notes WHERE leadType = 'quote' AND leadId IN (${placeholders})`).run(...ids);
+  db.prepare(`DELETE FROM quote_requests WHERE id IN (${placeholders})`).run(...ids);
+  res.json({ success: true, deleted: ids.length });
+});
+
+app.delete("/api/crm/callback-requests/bulk", isAuthenticated, (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "Geen IDs opgegeven" });
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(`DELETE FROM lead_notes WHERE leadType = 'callback' AND leadId IN (${placeholders})`).run(...ids);
+  db.prepare(`DELETE FROM callback_requests WHERE id IN (${placeholders})`).run(...ids);
+  res.json({ success: true, deleted: ids.length });
+});
+
+app.delete("/api/crm/contact-messages/bulk", isAuthenticated, (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "Geen IDs opgegeven" });
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(`DELETE FROM contact_messages WHERE id IN (${placeholders})`).run(...ids);
+  res.json({ success: true, deleted: ids.length });
 });
 
 app.get("/api/crm/notes/:leadType/:leadId", isAuthenticated, (req, res) => {
