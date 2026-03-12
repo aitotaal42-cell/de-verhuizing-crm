@@ -15,7 +15,11 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin)) {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.length === 0) {
+      return callback(new Error("ALLOWED_ORIGINS niet ingesteld. Start de server met: ALLOWED_ORIGINS=https://deverhuizing.nl,https://www.deverhuizing.nl node server.js"));
+    }
+    if (ALLOWED_ORIGINS.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
