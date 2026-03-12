@@ -14,7 +14,7 @@ node setup.js admin JouwWachtwoord "Je Naam"
 ## Opstarten
 
 ```bash
-ALLOWED_ORIGINS=https://deverhuizing.nl,https://www.deverhuizing.nl \
+ALLOWED_ORIGINS=https://deverhuizing.nl,https://www.deverhuizing.nl,https://crm.deverhuizing.nl \
 SESSION_SECRET=kies-een-lang-geheim \
 PORT=3001 \
 node server.js
@@ -25,7 +25,7 @@ node server.js
 ```bash
 npm install -g pm2
 
-ALLOWED_ORIGINS=https://deverhuizing.nl,https://www.deverhuizing.nl \
+ALLOWED_ORIGINS=https://deverhuizing.nl,https://www.deverhuizing.nl,https://crm.deverhuizing.nl \
 SESSION_SECRET=kies-een-lang-geheim \
 pm2 start server.js --name "crm"
 
@@ -37,7 +37,7 @@ pm2 startup
 
 | Variabele | Verplicht | Standaard | Beschrijving |
 |-----------|-----------|-----------|--------------|
-| `ALLOWED_ORIGINS` | Ja | - | Komma-gescheiden lijst van toegestane domeinen voor CORS (bijv. `https://deverhuizing.nl,https://www.deverhuizing.nl`) |
+| `ALLOWED_ORIGINS` | Ja | - | Komma-gescheiden lijst van toegestane domeinen voor CORS (bijv. `https://deverhuizing.nl,https://www.deverhuizing.nl,https://crm.deverhuizing.nl`) |
 | `SESSION_SECRET` | Ja | - | Geheime sleutel voor sessie-encryptie |
 | `PORT` | Nee | 3001 | Poort waarop de server draait |
 
